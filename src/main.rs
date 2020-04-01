@@ -1,5 +1,5 @@
 use std::collections::{HashSet,HashMap};
-use std::cmp::{max};
+use std::cmp::{max,min};
 use std::ops::{Add};
 use rand::distributions::{Distribution, Uniform};
 use rand::Rng;
@@ -46,23 +46,23 @@ struct Graph {
     edges: Vec<Edge>,
 }
 
-struct Solution {
-    vertices: Vec<Vertex>,
+struct Solution<'a> {
+    vertices: Option<&'a Vec<Vertex>>,
     labels: Option<HashMap<Vertex, Position>>,
-    edges: Vec<Edge>,
+    edges: Option<&'a Vec<Edge>>,
     pages: Option<HashMap<Edge, Page>>
 }
 
-fn empty_sol() -> Solution {
+fn empty_sol<'a>() -> Solution<'a> {
     Solution {
-        vertices: Vec::new(),
+        vertices: None,
         labels: None,
-        edges: Vec::new(),
+        edges: None,
         pages: None
     }
 }
 
-impl Solution {
+impl <'a> Solution<'a> {
     fn pagenumber(&self) -> usize{
         let mut max_pg = 0;
         let pages = self.pages.as_ref().unwrap();
@@ -86,23 +86,23 @@ fn is_crossing(u: &Position, v: &Position, p: &Position, q: &Position) -> bool {
 
 }
 
-fn give_birth(parent: &Solution) -> Solution {
+fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
 
     let original_labels = parent.labels.as_ref().unwrap();
 
     let mut rng = rand::thread_rng();
-    let die = Uniform::from(0..parent.vertices.len());
+    let die = Uniform::from(0..parent.vertices.unwrap().len());
 
     //we pick a vertex then all vertices with label less or equal to the vertex's are included as is
     let max_vertex = Vertex(die.sample(&mut rng));
     let max_pos = original_labels.get(&max_vertex).unwrap();
 
-    let vertices = parent.vertices.clone();
-    let edges = parent.edges.clone();
+    let vertices = parent.vertices.unwrap();
+    let edges = parent.edges.unwrap();
 
     let mut new_labels = HashMap::new();
 
-    for vertex in &vertices {
+    for vertex in vertices {
         let label = original_labels.get(vertex).unwrap();
         if  label <= max_pos {
             new_labels.insert(*vertex, *label);
@@ -124,8 +124,8 @@ fn give_birth(parent: &Solution) -> Solution {
     // println!("nb vertices:{}, nb labels:{}", vertices.len(), new_labels.len());
 
     let child = Solution {
-        edges,
-        vertices,
+        edges: Some(edges),
+        vertices: Some(vertices),
         labels: Some(new_labels),
         pages: None
     };
@@ -137,7 +137,7 @@ fn give_birth(parent: &Solution) -> Solution {
 fn mutation(solution: &mut Solution){
 
     let mut rng = rand::thread_rng();
-    let die = Uniform::from(0..solution.vertices.len());
+    let die = Uniform::from(0..solution.vertices.unwrap().len());
 
     let p1 = Position(die.sample(&mut rng));
     let p2 = Position(die.sample(&mut rng));
@@ -174,7 +174,7 @@ fn naive_paging(solution: Solution) -> Solution {
     let mut solution = solution;
 
     let mut pages = HashMap::new();
-    let edges = &solution.edges;
+    let edges = solution.edges.unwrap();
     let labels = solution.labels.as_ref().unwrap();
 
     let first_edge = edges[0];
@@ -229,17 +229,24 @@ fn naive_paging(solution: Solution) -> Solution {
 
 }
 
-//the idea is, take the vertices, create edges like if it were the complete graph, then try to embed them in book
-fn EEH(solution: Solution) -> Solution {
-    let Vertex(n) = *solution.vertices.iter().max().unwrap();
+//the idea is, take the vertices, create edges like if it were the complete graph, and then output this list
+fn EEH(old_edges: &Vec<Edge>, vertices: &Vec<Vertex>) -> Vec<Edge> {
+ 
+    // println!("In EEH");
+    // println!("edges:{:?}",old_edges);
+    let Vertex(n) = *vertices.iter().max().unwrap();
+
+    let n = n + 1;//if we have vertices from 0 to n, then it is a subset of K(n+1)
+
+    // println!("n:{}",n);
     let mut s: Vec<Edge> = Vec::new();
 
-    for v in 0..n/2+1 {
+    for v in 0..((n as f64 / 2.0).ceil() as usize)  {
 
 
         let mut cur_label = v;
 
-        for w in 1..n/2+1 {
+        for w in 1..((n as f64 / 2.0).ceil() as usize) + 1 { // here we actually want to each ceil(n/2)
             let edge = Edge(Vertex(cur_label), Vertex((v + w).rem_euclid(n)));
 
             s.push(edge);
@@ -257,13 +264,15 @@ fn EEH(solution: Solution) -> Solution {
         s.push(edge);
     }
 
+    // println!("s:{:?}",s);
+
     let mut edges = Vec::new();
 
     for i in 0..s.len() {
 
         let Edge(v1,v2) = s[i];
 
-        if solution.edges.contains(&Edge(v1,v2)) && !edges.contains(&Edge(v1,v2)){
+        if old_edges.contains(&Edge(v1,v2)) && !edges.contains(&Edge(v1,v2)){
 
             edges.push(Edge(v1,v2));
 
@@ -271,11 +280,7 @@ fn EEH(solution: Solution) -> Solution {
 
     }
 
-
-    // println!("Edges:{:?}",edges);
-
-
-    naive_paging(solution)
+    edges
 
 
     
@@ -297,6 +302,12 @@ fn RDFS(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> HashMap<Vertex, Position> 
     let cur_vertex = &vertices[rand_index];
 
     RDFS_sub(&edges, cur_vertex, cur_pos, &mut labels);
+
+    // println!("len vertices:{}, len labels:{}",vertices.len(), labels.len());
+
+    // println!("edges:{:?}",edges);
+
+    // println!("labels:{:?}",labels);
 
     labels
     
@@ -395,6 +406,13 @@ fn best_pg_number(parents: &[Solution]) -> usize {
 }
 
 fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
+
+    let edges = &EEH(edges, vertices);
+
+    // println!("edges: {:?}",edges);
+
+    // panic!("mah");
+
     let pop_size: usize = 10;
     let k: usize = 10;
     let alpha = 0.99;
@@ -423,19 +441,23 @@ fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
     // println!("Length of children:{}",children.len());
 
     for _ in 0..pop_size {
-        let labels = RDFS(&vertices, &edges);
 
-        let vertices = vertices.clone();
-        let edges = edges.clone();
+        // println!("start");
+
+        let labels = RDFS(vertices, edges);
+
+        // println!("RDFS done");
 
         let sol = Solution{
-            vertices,
-            edges,
+            vertices: Some(vertices),
+            edges: Some(edges),
             labels: Some(labels),
             pages: None
         };
 
-        let sol = EEH(sol);
+        
+        let sol = naive_paging(sol);
+        // println!("naive paiging done");
 
         parents.push(sol);
     }
@@ -464,7 +486,7 @@ fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
                 // println!("Past birth");
 
                 // apply pagination
-                let mut child = EEH(child);
+                let mut child = naive_paging(child);
 
                 // println!("Past EEH");
 
@@ -513,7 +535,7 @@ fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
 
         
 
-        best_pg_nb = best_pg_number(&parents);
+        best_pg_nb = min(best_pg_number(&parents),best_pg_nb);
 
         // println!("Best pg numebr:{}",best_pg_nb);
 
@@ -524,7 +546,7 @@ fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
         
     }
 
-    
+
 
     best_pg_nb
 
