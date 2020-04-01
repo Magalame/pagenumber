@@ -1,8 +1,10 @@
+#![allow(dead_code)]
+#![allow(non_snake_case)]
 use std::collections::{HashSet,HashMap};
 use std::cmp::{max,min};
-use std::ops::{Add};
 use rand::distributions::{Distribution, Uniform};
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
 use std::mem;
 /*
 todo:
@@ -89,8 +91,8 @@ fn is_crossing(u: &Position, v: &Position, p: &Position, q: &Position) -> bool {
 fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
 
     let original_labels = parent.labels.as_ref().unwrap();
-
-    let mut rng = rand::thread_rng();
+    let mut rng: StdRng = SeedableRng::seed_from_u64(0);
+    // let mut rng = rand::thread_rng();
     let die = Uniform::from(0..parent.vertices.unwrap().len());
 
     //we pick a vertex then all vertices with label less or equal to the vertex's are included as is
@@ -121,6 +123,18 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
         }
     } 
 
+    let mut check = HashSet::new();
+
+    for v in new_labels.values() {
+        if !check.contains(v){
+            check.insert(*v);
+        } else {
+            panic!("Collision between Vertex position: {:?}, {:?}", v, new_labels);
+        }
+    }
+
+
+
     // println!("nb vertices:{}, nb labels:{}", vertices.len(), new_labels.len());
 
     let child = Solution {
@@ -136,35 +150,24 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
 
 fn mutation(solution: &mut Solution){
 
-    let mut rng = rand::thread_rng();
+    let mut rng: StdRng = SeedableRng::seed_from_u64(3);
+    // let mut rng = rand::thread_rng();
     let die = Uniform::from(0..solution.vertices.unwrap().len());
 
-    let p1 = Position(die.sample(&mut rng));
-    let p2 = Position(die.sample(&mut rng));
+    let v1 = Vertex(die.sample(&mut rng));
+    let v2 = Vertex(die.sample(&mut rng));
 
     let labels = solution.labels.as_mut().unwrap(); 
 
-    let mut v1 = Vertex(0);
-    let mut v2 = Vertex(0);
+    
 
-    for (v,p) in labels.iter(){
+    // we switch dem label
 
-        if p == &p1 {
-            v1 = *v;
-        } else if p == &p2 {
-            v2 = *v;
-        }
+    let p1 = *labels.get(&v1).unwrap();
+    let p2 = *labels.get(&v2).unwrap();
 
-    }
-
-    // we switch dem pages
-
-    let p1_old = labels.get_mut(&v1).unwrap();
-    *p1_old = p2;
-
-    let p2_old = labels.get_mut(&v2).unwrap();
-    *p2_old = p1;
-
+    labels.insert(v1,p2);
+    labels.insert(v2,p1);
 
 }
 
@@ -186,6 +189,8 @@ fn naive_paging(solution: Solution) -> Solution {
     'next_edge: for i in 1..edges.len() {
 
         let Edge(Vertex(u),Vertex(v)) = edges[i];
+
+        // println!("At {:?}",Edge(Vertex(u),Vertex(v)));
         
         'next_page: for cur_page in 0..max_page+1 {
 
@@ -202,7 +207,10 @@ fn naive_paging(solution: Solution) -> Solution {
                     let cross = is_crossing(u_l, v_l, p_l, q_l);
 
                     if cross {
+                        // println!("\t not ok w/ {:?}",Edge(Vertex(p),Vertex(q)));
                         continue 'next_page;
+                    } else {
+                        // println!("\t ok w/ {:?}",Edge(Vertex(p),Vertex(q)));
                     }
 
                 }
@@ -215,10 +223,10 @@ fn naive_paging(solution: Solution) -> Solution {
             continue 'next_edge;
 
         }
-
-        // if we get there it means that the edge fit in no page
-        pages.insert(edges[i], Page(max_page));
+        // if we get there it means that the edge fits into no page
         max_page += 1;
+        pages.insert(edges[i], Page(max_page));
+        
         
     }
 
@@ -289,7 +297,8 @@ fn EEH(old_edges: &Vec<Edge>, vertices: &Vec<Vertex>) -> Vec<Edge> {
 //the purpose is to assign labels to vertexes from a RDFS
 fn RDFS(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> HashMap<Vertex, Position> {
 
-    let mut rng = rand::thread_rng();
+    //let mut rng = rand::thread_rng();
+    let mut rng: StdRng = SeedableRng::seed_from_u64(0);
     let die = Uniform::from(0..vertices.len());
     let rand_index = die.sample(&mut rng); //we get a random index
     // let rand_index = 4;
@@ -303,11 +312,6 @@ fn RDFS(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> HashMap<Vertex, Position> 
 
     RDFS_sub(&edges, cur_vertex, cur_pos, &mut labels);
 
-    // println!("len vertices:{}, len labels:{}",vertices.len(), labels.len());
-
-    // println!("edges:{:?}",edges);
-
-    // println!("labels:{:?}",labels);
 
     labels
     
@@ -402,26 +406,24 @@ fn child_with_min_pages(children: &[Solution]) -> usize {
 }
 
 fn best_pg_number(parents: &[Solution]) -> usize {
-    parents.iter().map(|p| p.pagenumber()).max().unwrap()
+    parents.iter().map(|p| p.pagenumber()).min().unwrap()
 }
 
 fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
 
     let edges = &EEH(edges, vertices);
 
-    // println!("edges: {:?}",edges);
-
-    // panic!("mah");
-
     let pop_size: usize = 10;
     let k: usize = 10;
-    let alpha = 0.99;
+    let alpha: f64 = 0.99;
     let Ti = 1.;
+    // let Tf = (alpha.powf(50.0))*Ti;
     let Tf = 0.01;
 
     let rm = 0.2;
 
-    let mut rng = rand::thread_rng();
+    //let mut rng = rand::thread_rng();
+    let mut rng: StdRng = SeedableRng::seed_from_u64(1);
 
     let mut t = 0;
     let mut T = Ti;
@@ -429,24 +431,18 @@ fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
     let mut ch_num = vec![k;pop_size];
 
     let mut parents: Vec<Solution> = Vec::with_capacity(pop_size);
-    // let mut next_parents: Vec<Solution> = Vec::with_capacity(pop_size);
-    // unsafe {next_parents.set_len(pop_size)};
-    
+
     let mut children: Vec<Vec<Solution>> = Vec::with_capacity(pop_size);
 
     for _ in 0..pop_size {
         children.push(Vec::with_capacity(k));
     }
 
-    // println!("Length of children:{}",children.len());
-
     for _ in 0..pop_size {
 
-        // println!("start");
 
         let labels = RDFS(vertices, edges);
 
-        // println!("RDFS done");
 
         let sol = Solution{
             vertices: Some(vertices),
@@ -457,70 +453,55 @@ fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
 
         
         let sol = naive_paging(sol);
-        // println!("naive paiging done");
 
         parents.push(sol);
     }
 
     let mut best_pg_nb = best_pg_number(&parents);
 
-    // println!("after init");
 
-    while T > Tf {
+    'all: while T > Tf {
 
-        // println!("T:{}",T);
 
         for parent_index in 0..pop_size {
 
-            // println!("children[parent_index].clear() 1");
 
             children[parent_index].clear(); // we remove all former kids
 
-            // println!("children[parent_index].clear() 2");
 
-            for child_index in 0..ch_num[parent_index] {
+            for _ in 0..ch_num[parent_index] {
 
-                //apply IDFS to create new child
-                let child = give_birth(&parents[parent_index]);
+                let mut child = give_birth(&parents[parent_index]);
 
-                // println!("Past birth");
-
-                // apply pagination
-                let mut child = naive_paging(child);
-
-                // println!("Past EEH");
-
-                //apply conditional mutation here
                 if rng.gen::<f64>() < rm {
-                     mutation(&mut child);
+                    mutation(&mut child);
+                } else {
                 }
+
+                let child = naive_paging(child);
 
                 children[parent_index].push(child);
 
             }
         }
 
-        // println!("chnum");
+        // println!("pg:{:?}",parents.iter().map(|p| p.pagenumber()).collect::<Vec<usize>>());
 
         update_ch_num(&parents, &children, &mut ch_num, best_pg_nb, T, k);
-
-        // println!("chnum end");
+        
 
         for parent_index in 0..pop_size {
 
             if children[parent_index].len() > 0 {
 
-                // println!("parent {}",parent_index);
 
                 let best_kid_index = child_with_min_pages(&children[parent_index]);
 
-                // println!("found best kid: {}", best_kid_index);
 
                 let beta = (parents[parent_index].pagenumber() as f64) - (children[parent_index][best_kid_index].pagenumber() as f64);
 
-                // println!("beta ok");
 
-                if beta > 0. || (beta/T).exp() > rng.gen::<f64>() { // if children better, becomes parent with certain pb
+                if beta > 0. || (beta/T).exp() > rng.gen::<f64>() { // if children is better, becomes parent with certain pb
                     // we take child out of vec, and assign it as parent
                     let best_child = mem::replace(&mut children[parent_index][best_kid_index], empty_sol());
                     parents[parent_index] = best_child;
@@ -537,7 +518,6 @@ fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
 
         best_pg_nb = min(best_pg_number(&parents),best_pg_nb);
 
-        // println!("Best pg numebr:{}",best_pg_nb);
 
         T = alpha*T;
 
@@ -554,7 +534,8 @@ fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
 
 fn update_ch_num(parents: &[Solution], children: &Vec<Vec<Solution>>, ch_num: &mut Vec<usize>, best_pg_nb: usize, T: f64, k: usize){
     let mut sum = 0;
-    let mut rng = rand::thread_rng();
+    let mut rng: StdRng = SeedableRng::seed_from_u64(0);
+    // let mut rng = rand::thread_rng();
     let mut count = vec![0;parents.len()];
     
     for i in 0..parents.len() {
@@ -570,9 +551,18 @@ fn update_ch_num(parents: &[Solution], children: &Vec<Vec<Solution>>, ch_num: &m
         sum = sum + count[i];
     }
 
-    for i in 0..parents.len() {
-        ch_num[i] = (k*parents.len()*count[i])/sum; 
+    if sum != 0 {
+        for i in 0..parents.len() {
+            ch_num[i] = (k*parents.len()*count[i])/sum; 
+        }
+    } else {
+        for i in 0..parents.len() {
+            ch_num[i] = 0; 
+        }
     }
+
+
+    
 
 }
 
@@ -619,26 +609,47 @@ fn main() {
     edges.push(Edge(Vertex(4),Vertex(6)));
     edges.push(Edge(Vertex(1),Vertex(2)));
 
-    // let labels = RDFS(&vertices, &edges);
+    let edges = EEH(&edges, &vertices);
 
-    // for (e,p) in labels.iter() {
+
+    let mut labels = HashMap::new();
+
+    labels.insert(Vertex(7), Position(6));
+        labels.insert(Vertex(10), Position(5));
+        labels.insert(Vertex(2), Position(1));
+        labels.insert(Vertex(1), Position(0));
+        labels.insert(Vertex(4), Position(6));
+        labels.insert(Vertex(6), Position(2));
+        labels.insert(Vertex(3), Position(7));
+        labels.insert(Vertex(5), Position(2));
+        labels.insert(Vertex(9), Position(4));
+        labels.insert(Vertex(8), Position(3));
+        labels.insert(Vertex(0), Position(7));
+         
+         
+         
+         
+    let sol = Solution {
+        vertices:Some(&vertices),
+        edges: Some(&edges),
+        pages: None,
+        labels: Some(labels),
+    };
+
+    // let sol = naive_paging(sol);
+
+
+    // println!("v:{:?}",sol.vertices.unwrap());
+    // println!("e:{:?}",sol.edges.unwrap());
+
+    // for (e,p) in sol.pages.as_ref().unwrap().iter() {
     //     println!("\t {:?},\t {:?}",e,p);
     // }
-
-    // let sol = Solution{
-    //     vertices,
-    //     edges,
-    //     labels: Some(labels),
-    //     pages: None
-    // };
-
-    // let sol = EEH(sol);
-
-    // println!("len:{}",sol.pages.as_ref().unwrap().len());
- 
-    // for (e,p) in sol.pages.unwrap().iter() {
-    //     println!("\t {:?},\t {:?}",e,p);
+    // for (v,p) in sol.labels.as_ref().unwrap().iter() {
+    //     println!("\tlabels.insert({:?}, {:?});",v,p);
     // }
+         
+    
 
     let pg = HEA(&vertices, &edges);
 
