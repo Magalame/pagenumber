@@ -91,8 +91,8 @@ fn is_crossing(u: &Position, v: &Position, p: &Position, q: &Position) -> bool {
 fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
 
     let original_labels = parent.labels.as_ref().unwrap();
-    let mut rng: StdRng = SeedableRng::seed_from_u64(0);
-    // let mut rng = rand::thread_rng();
+    
+    let mut rng = rand::thread_rng();
     let die = Uniform::from(0..parent.vertices.unwrap().len());
 
     //we pick a vertex then all vertices with label less or equal to the vertex's are included as is
@@ -102,7 +102,7 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
     let vertices = parent.vertices.unwrap();
     let edges = parent.edges.unwrap();
 
-    let mut new_labels = HashMap::new();
+    let mut new_labels = HashMap::with_capacity(original_labels.capacity());
 
     for vertex in vertices {
         let label = original_labels.get(vertex).unwrap();
@@ -119,22 +119,34 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
 
     for (v,p) in original_labels.iter() {
         if !new_labels.contains_key(v) {
-            new_labels.insert(*v, *p);
+            
+            if !new_labels.values().any(|x| x == p) { 
+                new_labels.insert(*v, *p);
+                // println!("no col");
+            } 
         }
     } 
 
-    let mut check = HashSet::new();
+    for (v,_) in original_labels.iter() {
+        if !new_labels.contains_key(v) {
+            
+            max_pos_index += 1;
+            while new_labels.values().any(|x| x == &Position(max_pos_index)) {
+                max_pos_index += 1;
+            } 
+                
+            new_labels.insert(*v, Position(max_pos_index)); //if collision, add at the end
+        }
+    }
 
+    let mut check = HashSet::new();
     for v in new_labels.values() {
         if !check.contains(v){
             check.insert(*v);
         } else {
-            panic!("Collision between Vertex position: {:?}, {:?}", v, new_labels);
+            panic!("***Collision between Vertex, picked: {:?}, \n+{:?}", v, new_labels);
         }
     }
-
-
-
     // println!("nb vertices:{}, nb labels:{}", vertices.len(), new_labels.len());
 
     let child = Solution {
@@ -150,16 +162,14 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
 
 fn mutation(solution: &mut Solution){
 
-    let mut rng: StdRng = SeedableRng::seed_from_u64(3);
-    // let mut rng = rand::thread_rng();
+    let mut rng = rand::thread_rng();
     let die = Uniform::from(0..solution.vertices.unwrap().len());
 
     let v1 = Vertex(die.sample(&mut rng));
     let v2 = Vertex(die.sample(&mut rng));
 
-    let labels = solution.labels.as_mut().unwrap(); 
 
-    
+    let labels = solution.labels.as_mut().unwrap(); 
 
     // we switch dem label
 
@@ -168,7 +178,6 @@ fn mutation(solution: &mut Solution){
 
     labels.insert(v1,p2);
     labels.insert(v2,p1);
-
 }
 
 //takes in a solution, and modifies its paging. it modifiesnothing else
@@ -297,13 +306,12 @@ fn EEH(old_edges: &Vec<Edge>, vertices: &Vec<Vertex>) -> Vec<Edge> {
 //the purpose is to assign labels to vertexes from a RDFS
 fn RDFS(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> HashMap<Vertex, Position> {
 
-    //let mut rng = rand::thread_rng();
-    let mut rng: StdRng = SeedableRng::seed_from_u64(0);
+    let mut rng = rand::thread_rng();
     let die = Uniform::from(0..vertices.len());
     let rand_index = die.sample(&mut rng); //we get a random index
     // let rand_index = 4;
 
-    let mut labels: HashMap<Vertex, Position> = HashMap::new();
+    let mut labels: HashMap<Vertex, Position> = HashMap::with_capacity(edges.len());
     let cur_pos = &mut 0; // initiate pos at 0
 
     labels.insert(vertices[rand_index], Position(*cur_pos)); 
@@ -422,8 +430,8 @@ fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
 
     let rm = 0.2;
 
-    //let mut rng = rand::thread_rng();
-    let mut rng: StdRng = SeedableRng::seed_from_u64(1);
+    let mut rng = rand::thread_rng();
+    // let mut rng: StdRng = SeedableRng::seed_from_u64(2);
 
     let mut t = 0;
     let mut T = Ti;
@@ -534,8 +542,7 @@ fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
 
 fn update_ch_num(parents: &[Solution], children: &Vec<Vec<Solution>>, ch_num: &mut Vec<usize>, best_pg_nb: usize, T: f64, k: usize){
     let mut sum = 0;
-    let mut rng: StdRng = SeedableRng::seed_from_u64(0);
-    // let mut rng = rand::thread_rng();
+    let mut rng = rand::thread_rng();
     let mut count = vec![0;parents.len()];
     
     for i in 0..parents.len() {
@@ -576,17 +583,6 @@ fn main() {
 
     let mut edges = Vec::new();
 
-    // edges.push(Edge(Vertex(0),Vertex(1)));
-    // edges.push(Edge(Vertex(1),Vertex(5)));
-    // edges.push(Edge(Vertex(5),Vertex(4)));
-    // edges.push(Edge(Vertex(4),Vertex(3)));
-    // edges.push(Edge(Vertex(5),Vertex(6)));
-    // edges.push(Edge(Vertex(6),Vertex(10)));
-    // edges.push(Edge(Vertex(6),Vertex(7)));
-    // edges.push(Edge(Vertex(7),Vertex(8)));
-    // edges.push(Edge(Vertex(8),Vertex(9)));
-    // edges.push(Edge(Vertex(1),Vertex(2)));
-
     edges.push(Edge(Vertex(0),Vertex(1)));
     edges.push(Edge(Vertex(3),Vertex(4)));
     edges.push(Edge(Vertex(4),Vertex(8)));
@@ -608,48 +604,6 @@ fn main() {
     edges.push(Edge(Vertex(5),Vertex(10)));
     edges.push(Edge(Vertex(4),Vertex(6)));
     edges.push(Edge(Vertex(1),Vertex(2)));
-
-    let edges = EEH(&edges, &vertices);
-
-
-    let mut labels = HashMap::new();
-
-    labels.insert(Vertex(7), Position(6));
-        labels.insert(Vertex(10), Position(5));
-        labels.insert(Vertex(2), Position(1));
-        labels.insert(Vertex(1), Position(0));
-        labels.insert(Vertex(4), Position(6));
-        labels.insert(Vertex(6), Position(2));
-        labels.insert(Vertex(3), Position(7));
-        labels.insert(Vertex(5), Position(2));
-        labels.insert(Vertex(9), Position(4));
-        labels.insert(Vertex(8), Position(3));
-        labels.insert(Vertex(0), Position(7));
-         
-         
-         
-         
-    let sol = Solution {
-        vertices:Some(&vertices),
-        edges: Some(&edges),
-        pages: None,
-        labels: Some(labels),
-    };
-
-    // let sol = naive_paging(sol);
-
-
-    // println!("v:{:?}",sol.vertices.unwrap());
-    // println!("e:{:?}",sol.edges.unwrap());
-
-    // for (e,p) in sol.pages.as_ref().unwrap().iter() {
-    //     println!("\t {:?},\t {:?}",e,p);
-    // }
-    // for (v,p) in sol.labels.as_ref().unwrap().iter() {
-    //     println!("\tlabels.insert({:?}, {:?});",v,p);
-    // }
-         
-    
 
     let pg = HEA(&vertices, &edges);
 
