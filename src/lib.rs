@@ -49,26 +49,27 @@ struct Graph {
 
 struct Solution<'a> {
     vertices: Option<&'a Vec<Vertex>>,
-    labels: Option<HashMap<Vertex, Position>>,
+    labels: Vec<Option<Position>>, //former Vertex,Position
     edges: Option<&'a Vec<Edge>>,
-    pages: Option<HashMap<Edge, Page>>
+    pages: Vec<Option<Page>> // former Edge,Page
 }
 
 fn empty_sol<'a>() -> Solution<'a> {
     Solution {
         vertices: None,
-        labels: None,
+        labels: Vec::new(),
         edges: None,
-        pages: None
+        pages: Vec::new()
     }
 }
 
 impl <'a> Solution<'a> {
     fn pagenumber(&self) -> usize{
         let mut max_pg = 0;
-        let pages = self.pages.as_ref().unwrap();
-        for (_, Page(page)) in pages.iter() {
-            max_pg = max(max_pg, *page);
+        let pages = &self.pages;
+        for page in pages.iter() {
+            let Page(page) = page.unwrap();
+            max_pg = max(max_pg, page);
         }
         max_pg + 1
     }
@@ -89,57 +90,57 @@ fn is_crossing(u: &Position, v: &Position, p: &Position, q: &Position) -> bool {
 
 fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
 
-    let original_labels = parent.labels.as_ref().unwrap();
+    let original_labels = &parent.labels;
     
     let mut rng = rand::thread_rng();
     let die = Uniform::from(0..parent.vertices.unwrap().len());
 
     //we pick a vertex then all vertices with label less or equal to the vertex's are included as is
-    let max_vertex = Vertex(die.sample(&mut rng));
-    let max_pos = original_labels.get(&max_vertex).unwrap();
+    let max_vertex_index = die.sample(&mut rng);
+    let max_pos = original_labels[max_vertex_index].unwrap();
 
     let vertices = parent.vertices.unwrap();
     let edges = parent.edges.unwrap();
 
-    let mut new_labels = HashMap::with_capacity(original_labels.capacity());
+    let mut new_labels = vec![None;vertices.len()];
 
-    for vertex in vertices {
-        let label = original_labels.get(vertex).unwrap();
+    for vertex_index in 0..vertices.len() {
+        let label = original_labels[vertex_index].unwrap();
         if  label <= max_pos {
-            new_labels.insert(*vertex, *label);
+            new_labels[vertex_index] = Some(label);
         }
     }
 
-    let Position(max_pos_index) = *max_pos;
+    let Position(max_pos_index) = max_pos;
 
     let mut max_pos_index = max_pos_index;
 
-    RDFS_sub(&edges, &max_vertex, &mut max_pos_index, &mut new_labels);
+    RDFS_sub(&edges, &Vertex(max_vertex_index), &mut max_pos_index, &mut new_labels);
 
-    for (v,p) in original_labels.iter() {
-        if !new_labels.contains_key(v) {
-            
-            if !new_labels.values().any(|x| x == p) { 
-                new_labels.insert(*v, *p);
+    for i in 0..original_labels.len() {
+        if new_labels[i].is_none() {
+            if !new_labels.contains(&original_labels[i]) { 
+                new_labels[i] = original_labels[i];
                 // println!("no col");
             } 
         }
     } 
 
-    for (v,_) in original_labels.iter() {
-        if !new_labels.contains_key(v) {
+    for i in 0..original_labels.len() {
+        if !new_labels[i].is_none() {
             
             max_pos_index += 1;
-            while new_labels.values().any(|x| x == &Position(max_pos_index)) {
+            while new_labels.contains(&Some(Position(max_pos_index))){
                 max_pos_index += 1;
             } 
+
+            new_labels[i] = Some(Position(max_pos_index));
                 
-            new_labels.insert(*v, Position(max_pos_index)); //if collision, add at the end
         }
     }
 
     let mut check = HashSet::new();
-    for v in new_labels.values() {
+    for v in new_labels.iter() {
         if !check.contains(v){
             check.insert(*v);
         } else {
@@ -151,8 +152,8 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
     let child = Solution {
         edges: Some(edges),
         vertices: Some(vertices),
-        labels: Some(new_labels),
-        pages: None
+        labels: new_labels,
+        pages: Vec::new()
     };
 
     child
@@ -164,19 +165,16 @@ fn mutation(solution: &mut Solution){
     let mut rng = rand::thread_rng();
     let die = Uniform::from(0..solution.vertices.unwrap().len());
 
-    let v1 = Vertex(die.sample(&mut rng));
-    let v2 = Vertex(die.sample(&mut rng));
-
-
-    let labels = solution.labels.as_mut().unwrap(); 
+    let v1 = die.sample(&mut rng);
+    let v2 = die.sample(&mut rng);
 
     // we switch dem label
 
-    let p1 = *labels.get(&v1).unwrap();
-    let p2 = *labels.get(&v2).unwrap();
+    let p1 = solution.labels[v1];
+    let p2 = solution.labels[v2];
 
-    labels.insert(v1,p2);
-    labels.insert(v2,p1);
+    solution.labels[v1] = p2;
+    solution.labels[v2] = p1;
 }
 
 //takes in a solution, and modifies its paging. it modifiesnothing else
@@ -184,15 +182,20 @@ fn naive_paging(solution: Solution) -> Solution {
 
     let mut solution = solution;
 
-    let mut pages = HashMap::new();
+    let mut pages: Vec<Option<Page>> = vec![None; solution.edges.unwrap().len()];
     let edges = solution.edges.unwrap();
-    let labels = solution.labels.as_ref().unwrap();
+    let labels = &mut solution.labels;
 
     let first_edge = edges[0];
 
-    pages.insert(first_edge, Page(0)); // the first edge is necessarily on the first page
+    pages[0] = Some(Page(0)); // the first edge is necessarily on the first page
 
     let mut max_page = 0;
+
+
+    // println!("{},{:?}",labels.len(), labels);
+
+     
 
     'next_edge: for i in 1..edges.len() {
 
@@ -204,15 +207,20 @@ fn naive_paging(solution: Solution) -> Solution {
 
             for j in 0..edges.len() {
 
-                if j != i && pages.contains_key(&edges[j]) && pages.get(&edges[j]).unwrap() == &Page(cur_page) {
+                if j != i && !pages[j].is_none() && pages[j].unwrap() == Page(cur_page) {
+
+                    // println!("ehere");
 
                     let Edge(Vertex(p),Vertex(q)) = edges[j];
 
-                    let u_l = labels.get(&Vertex(u)).unwrap();
-                    let v_l = labels.get(&Vertex(v)).unwrap();
-                    let p_l = labels.get(&Vertex(p)).unwrap();
-                    let q_l = labels.get(&Vertex(q)).unwrap();
-                    let cross = is_crossing(u_l, v_l, p_l, q_l);
+                    let u_l = labels[u].unwrap();
+                    let v_l = labels[v].unwrap();
+                    let p_l = labels[p].unwrap();
+                    let q_l = labels[q].unwrap();
+
+                    // println!("ehere2");
+
+                    let cross = is_crossing(&u_l, &v_l, &p_l, &q_l);
 
                     if cross {
                         // println!("\t not ok w/ {:?}",Edge(Vertex(p),Vertex(q)));
@@ -226,19 +234,19 @@ fn naive_paging(solution: Solution) -> Solution {
             }
 
             //if we get there it means that we met not conflict on this page
-            pages.insert(edges[i], Page(cur_page));
+            pages[i] = Some(Page(cur_page));
 
             continue 'next_edge;
 
         }
         // if we get there it means that the edge fits into no page
         max_page += 1;
-        pages.insert(edges[i], Page(max_page));
+        pages[i] = Some(Page(max_page));
         
         
     }
 
-    solution.pages = Some(pages);
+    solution.pages = pages;
 
     solution
     
@@ -303,19 +311,19 @@ fn EEH(old_edges: &Vec<Edge>, vertices: &Vec<Vertex>) -> Vec<Edge> {
 }
 
 //the purpose is to assign labels to vertexes from a RDFS
-fn RDFS(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> HashMap<Vertex, Position> {
+fn RDFS(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> Vec<Option<Position>> {
 
     let mut rng = rand::thread_rng();
     let die = Uniform::from(0..vertices.len());
     let rand_index = die.sample(&mut rng); //we get a random index
     // let rand_index = 4;
 
-    let mut labels: HashMap<Vertex, Position> = HashMap::with_capacity(edges.len());
+    let mut labels: Vec<Option<Position>> = vec![None;vertices.len()];
     let cur_pos = &mut 0; // initiate pos at 0
 
-    labels.insert(vertices[rand_index], Position(*cur_pos)); 
+    labels[rand_index] = Some(Position(*cur_pos)); 
 
-    let cur_vertex = &vertices[rand_index];
+    let cur_vertex = &Vertex(rand_index);
 
     RDFS_sub(&edges, cur_vertex, cur_pos, &mut labels);
 
@@ -324,7 +332,7 @@ fn RDFS(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> HashMap<Vertex, Position> 
     
 }
 
-fn RDFS_sub(edges: &Vec<Edge>, cur_vertex: &Vertex, cur_pos:&mut usize, labels: &mut HashMap<Vertex, Position>){
+fn RDFS_sub(edges: &Vec<Edge>, cur_vertex: &Vertex, cur_pos:&mut usize, labels: &mut Vec<Option<Position>>){
 
 
     // println!("vertex:{:?}",cur_vertex);
@@ -340,17 +348,20 @@ fn RDFS_sub(edges: &Vec<Edge>, cur_vertex: &Vertex, cur_pos:&mut usize, labels: 
 
     for Edge(u,v) in neighbors { //since the hashmap has random access, access to neighbors is random, which is what we want
 
+        let Vertex(v_index) = v;
+        let Vertex(u_index) = u;
+
         if u == cur_vertex {
-            if !labels.contains_key(v){
+            if labels[*v_index].is_none() {
                 *cur_pos += 1;
-                labels.insert(*v, Position(*cur_pos));
+                labels[*v_index] = Some(Position(*cur_pos));
                 RDFS_sub(edges, v, cur_pos, labels);
             }
 
         } else if v == cur_vertex {
-            if !labels.contains_key(u){
+            if labels[*u_index].is_none(){
                 *cur_pos += 1;
-                labels.insert(*u, Position(*cur_pos));
+                labels[*u_index] = Some(Position(*cur_pos));
                 RDFS_sub(edges, u, cur_pos, labels);
             }
         }
@@ -360,47 +371,47 @@ fn RDFS_sub(edges: &Vec<Edge>, cur_vertex: &Vertex, cur_pos:&mut usize, labels: 
 }
 
 
-fn DFS(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> HashMap<Vertex, Position> {
+// fn DFS(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> HashMap<Vertex, Position> {
 
-    let mut labels: HashMap<Vertex, Position> = HashMap::new();
-    let cur_pos = &mut 0;
+//     let mut labels: HashMap<Vertex, Position> = HashMap::new();
+//     let cur_pos = &mut 0;
 
-    labels.insert(vertices[0], Position(*cur_pos));
+//     labels.insert(vertices[0], Position(*cur_pos));
 
-    let mut v_read: HashSet<Vertex> = HashSet::new();
+//     let mut v_read: HashSet<Vertex> = HashSet::new();
 
-    let cur_vertex = &vertices[0];
+//     let cur_vertex = &vertices[0];
 
-    v_read.insert(*cur_vertex);
+//     v_read.insert(*cur_vertex);
 
-    DFS_sub(&edges, cur_vertex, cur_pos, &mut labels);
+//     DFS_sub(&edges, cur_vertex, cur_pos, &mut labels);
 
-    labels
+//     labels
     
-}
+// }
 
-fn DFS_sub(edges: &Vec<Edge>, cur_vertex: &Vertex, cur_pos:&mut usize, labels: &mut HashMap<Vertex, Position>){
+// fn DFS_sub(edges: &Vec<Edge>, cur_vertex: &Vertex, cur_pos:&mut usize, labels: &mut HashMap<Vertex, Position>){
 
 
-    for Edge(u,v) in edges { 
+//     for Edge(u,v) in edges { 
 
-        if u == cur_vertex {
-            if !labels.contains_key(v){ //if vertex doesn't have a label yet then it means we haven't visited it yet
-                *cur_pos += 1;
-                labels.insert(*v, Position(*cur_pos));
-                RDFS_sub(edges, v, cur_pos, labels);
-            }
+//         if u == cur_vertex {
+//             if !labels.contains_key(v){ //if vertex doesn't have a label yet then it means we haven't visited it yet
+//                 *cur_pos += 1;
+//                 labels.insert(*v, Position(*cur_pos));
+//                 RDFS_sub(edges, v, cur_pos, labels);
+//             }
 
-        } else if v == cur_vertex {
-            if !labels.contains_key(u){
-                *cur_pos += 1;
-                labels.insert(*u, Position(*cur_pos));
-                RDFS_sub(edges, u, cur_pos, labels);
-            }
-        }
-    }
+//         } else if v == cur_vertex {
+//             if !labels.contains_key(u){
+//                 *cur_pos += 1;
+//                 labels.insert(*u, Position(*cur_pos));
+//                 RDFS_sub(edges, u, cur_pos, labels);
+//             }
+//         }
+//     }
 
-}
+// }
 
 fn child_with_min_pages(children: &[Solution]) -> usize {
     let mut best_kid = 0;
@@ -451,19 +462,25 @@ pub fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
 
         let labels = RDFS(vertices, edges);
 
+        //  println!("after rdfs");
+
 
         let sol = Solution{
             vertices: Some(vertices),
             edges: Some(edges),
-            labels: Some(labels),
-            pages: None
+            labels: labels,
+            pages: Vec::new()
         };
 
         
         let sol = naive_paging(sol);
 
+        //  println!("after paging");
+
         parents.push(sol);
     }
+
+    // println!("after pop");
 
     let mut best_pg_nb = best_pg_number(&parents);
 

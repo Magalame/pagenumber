@@ -12,9 +12,9 @@ fn k_graph(n: usize) -> (Vec<Vertex>, Vec<Edge>){
 
 fn main() {
 
-    let (vertices,edges) = k_graph(8);
+    let (vertices,edges) = k_graph(14);
 
-    println!("{:?}",edges);
+    // println!("{:?}",edges);
 
     // let mut vertices = Vec::new();
 
