@@ -94,7 +94,7 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
 
     let original_labels = &parent.labels;
 
-    println!("or labels:{:?}",original_labels);
+    // println!("or labels:{:?}",original_labels);
     
     let mut rng = rand::thread_rng();
     let die = Uniform::from(0..parent.vertices.unwrap().len());
@@ -115,7 +115,7 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
         }
     }
 
-    println!("intermediate labels {:?}",new_labels);
+    // println!("intermediate labels {:?}",new_labels);
 
     let Position(max_pos_index) = max_pos;
 
@@ -123,7 +123,7 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
 
     RDFS_sub(&edges, &Vertex(max_vertex_index), &mut max_pos_index, &mut new_labels);
 
-    println!("after RDFS labels {:?}",new_labels);
+    // println!("after RDFS labels {:?}",new_labels);
 
     for i in 0..original_labels.len() {
         if new_labels[i].is_none() {
@@ -134,7 +134,7 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
         }
     } 
 
-    println!("after simple copy {:?}",new_labels);
+    // println!("after simple copy {:?}",new_labels);
 
     for i in 0..original_labels.len() {
         if new_labels[i].is_none() {// if we didn't label this vertex, then
@@ -149,7 +149,7 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
         }
     }
 
-    println!("new labels:{:?}", new_labels);
+    // println!("new labels:{:?}", new_labels);
 
     let mut check = HashSet::new();
     for v in new_labels.iter() {
@@ -336,7 +336,7 @@ fn RDFS(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> Vec<Option<Position>> {
     let mut labels: Vec<Option<Position>> = vec![None;vertices.len()];
     let cur_pos = &mut 0; // initiate pos at 0
 
-    println!("started");
+    // println!("started");
 
     while labels.contains(&None){// as long as we havent labeled all the vertices
 
@@ -349,7 +349,7 @@ fn RDFS(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> Vec<Option<Position>> {
 
         RDFS_sub(&edges, cur_vertex, cur_pos, &mut labels);
 
-        println!("labels:{:?}",labels);
+        // println!("labels:{:?}",labels);
 
         *cur_pos += 1;
 
