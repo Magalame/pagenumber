@@ -90,7 +90,11 @@ fn is_crossing(u: &Position, v: &Position, p: &Position, q: &Position) -> bool {
 
 fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
 
+    
+
     let original_labels = &parent.labels;
+
+    println!("or labels:{:?}",original_labels);
     
     let mut rng = rand::thread_rng();
     let die = Uniform::from(0..parent.vertices.unwrap().len());
@@ -111,11 +115,15 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
         }
     }
 
+    println!("intermediate labels {:?}",new_labels);
+
     let Position(max_pos_index) = max_pos;
 
     let mut max_pos_index = max_pos_index;
 
     RDFS_sub(&edges, &Vertex(max_vertex_index), &mut max_pos_index, &mut new_labels);
+
+    println!("after RDFS labels {:?}",new_labels);
 
     for i in 0..original_labels.len() {
         if new_labels[i].is_none() {
@@ -126,11 +134,13 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
         }
     } 
 
+    println!("after simple copy {:?}",new_labels);
+
     for i in 0..original_labels.len() {
-        if !new_labels[i].is_none() {
+        if new_labels[i].is_none() {// if we didn't label this vertex, then
             
             max_pos_index += 1;
-            while new_labels.contains(&Some(Position(max_pos_index))){
+            while new_labels.contains(&Some(Position(max_pos_index))){ //increment until there is no collision
                 max_pos_index += 1;
             } 
 
@@ -138,6 +148,8 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
                 
         }
     }
+
+    println!("new labels:{:?}", new_labels);
 
     let mut check = HashSet::new();
     for v in new_labels.iter() {
@@ -147,7 +159,8 @@ fn give_birth<'a>(parent: &Solution<'a>) -> Solution<'a> {
             panic!("***Collision between Vertex, picked: {:?}, \n+{:?}", v, new_labels);
         }
     }
-    // println!("nb vertices:{}, nb labels:{}", vertices.len(), new_labels.len());
+    
+
 
     let child = Solution {
         edges: Some(edges),
@@ -195,7 +208,9 @@ fn naive_paging(solution: Solution) -> Solution {
 
     // println!("{},{:?}",labels.len(), labels);
 
-     
+    // println!("paging first");
+    // println!("edges:{:?}",edges);
+    // println!("labels:{:?}",labels);       
 
     'next_edge: for i in 1..edges.len() {
 
@@ -315,17 +330,35 @@ fn RDFS(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> Vec<Option<Position>> {
 
     let mut rng = rand::thread_rng();
     let die = Uniform::from(0..vertices.len());
-    let rand_index = die.sample(&mut rng); //we get a random index
+    let mut rand_index = die.sample(&mut rng); //we get a random index
     // let rand_index = 4;
 
     let mut labels: Vec<Option<Position>> = vec![None;vertices.len()];
     let cur_pos = &mut 0; // initiate pos at 0
 
-    labels[rand_index] = Some(Position(*cur_pos)); 
+    println!("started");
 
-    let cur_vertex = &Vertex(rand_index);
+    while labels.contains(&None){// as long as we havent labeled all the vertices
 
-    RDFS_sub(&edges, cur_vertex, cur_pos, &mut labels);
+        while labels[rand_index] != None { // and that the rand_index gives us an unlabeled vertex
+            rand_index = die.sample(&mut rng);
+        }
+
+        labels[rand_index] = Some(Position(*cur_pos)); 
+        let cur_vertex = &Vertex(rand_index);
+
+        RDFS_sub(&edges, cur_vertex, cur_pos, &mut labels);
+
+        println!("labels:{:?}",labels);
+
+        *cur_pos += 1;
+
+        
+
+
+    }
+
+    
 
 
     labels
@@ -459,6 +492,8 @@ pub fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
 
     for _ in 0..pop_size {
 
+        // println!("before rdfs");
+
 
         let labels = RDFS(vertices, edges);
 
@@ -541,8 +576,7 @@ pub fn HEA(vertices: &Vec<Vertex>, edges: &Vec<Edge>) -> usize {
         
 
         best_pg_nb = min(best_pg_number(&parents),best_pg_nb);
-
-
+        // println!("{}",best_pg_nb);
         T = alpha*T;
 
         t = t + 1;
